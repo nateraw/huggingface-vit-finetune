@@ -32,19 +32,19 @@ class ImageClassifier(pl.LightningModule):
 
     def metric(self, preds, labels, mode='val'):
         a = self.accuracy_metric(preds, labels)
-        return {f'{mode}_precision': p, f'{mode}_recall': r, f'{mode}_acc': a}
+        return {f'{mode}_acc': a}
 
     def forward(self, **inputs):
         return self.model(**inputs)
 
     def training_step(self, batch, batch_idx):
-        outputs = self(pixel_values=batch[0], labels=batch[1])
+        outputs = self(**batch)
         loss = outputs[0]
         self.log('train_loss', loss)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        outputs = self(pixel_values=batch[0], labels=batch[1])
+        outputs = self(**batch)
         val_loss, logits = outputs[:2]
         preds = torch.argmax(logits, axis=1)
         metric_dict = self.metric(preds, batch['labels'])
@@ -52,10 +52,13 @@ class ImageClassifier(pl.LightningModule):
         self.log('val_loss', val_loss, prog_bar=True)
 
     def test_step(self, batch, batch_idx, dataloader_idx=0):
-        outputs = self(pixel_values=batch[0], labels=batch[1])
-        logits = outputs[0]
+        outputs = self(**batch)
+        test_loss, logits = outputs[:2]
         preds = torch.argmax(logits, axis=1)
         self.write_prediction('preds', preds, self.hparams.predictions_file)
+        self.write_prediction('labels', batch['labels'], self.hparams.predictions_file)
+        metric_dict = self.metric(preds, batch['labels'], mode='test')
+        self.log_dict(metric_dict, prog_bar=True, on_step=False, on_epoch=True)
 
     def configure_optimizers(self):
         "Prepare optimizer and schedule (linear warmup and decay)"
@@ -81,4 +84,4 @@ class ImageClassifier(pl.LightningModule):
     def save_pretrained(self, save_dir):
         self.hparams.save_dir = save_dir
         self.model.save_pretrained(self.hparams.save_dir)
-        self.tokenizer.save_pretrained(self.hparams.save_dir)
+        # self.tokenizer.save_pretrained(self.hparams.save_dir)
